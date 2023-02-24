@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutetr_spklu/NavigationPage.dart';
 import 'package:flutetr_spklu/global/color.dart';
 import 'package:flutetr_spklu/page/Feature/LocationPage.dart';
@@ -5,45 +7,60 @@ import 'package:flutetr_spklu/page/Main/DashboardPage.dart';
 import 'package:flutetr_spklu/page/Payment/ConfirmPage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
-
-void main() {
-  runApp(const ChargingInputPage());
-}
+import 'package:http/http.dart' as http;
+import 'package:localstorage/localstorage.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class ChargingInputPage extends StatelessWidget {
-  const ChargingInputPage({super.key});
+  const ChargingInputPage({
+    Key? key,
+    required this.qrCode,
+  }) : super(key: key);
+  final String qrCode;
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       title: 'Pengisian kWh',
-      home: ChargingInputScreen(),
+      home: ChargingInputScreen(qrCode: qrCode),
     );
   }
 }
 
 class ChargingInputScreen extends StatefulWidget {
-  const ChargingInputScreen({super.key});
+  const ChargingInputScreen({
+    Key? key,
+    required this.qrCode,
+  }) : super(key: key);
+  final String qrCode;
 
   @override
   State<ChargingInputScreen> createState() => _ChargingInputScreenState();
 }
 
 class _ChargingInputScreenState extends State<ChargingInputScreen> {
+  final LocalStorage storage = new LocalStorage('localstorage_app');
+  late List lokasiCharger = [];
+  late List dataTarif = [];
   final nominalKWH = TextEditingController();
   String estimasiBiaya = "0";
-  String _scanBarcode = 'Unknown';
 
   @override
   void initState() {
     super.initState();
+    _fetchLokasiCharger();
+    _fetchDataTarif();
     nominalKWH.addListener(() {
       setState(() {
         if (nominalKWH.text.isEmpty) {
           estimasiBiaya = "0";
         } else {
-          estimasiBiaya = (int.parse(nominalKWH.text) * 2475)
+          estimasiBiaya = ((int.parse(nominalKWH.text) *
+                          int.parse(dataTarif[0]['tarif_perkwh']) +
+                      int.parse(dataTarif[0]['tarif_ppj']) +
+                      int.parse(dataTarif[0]['tarif_ppn']) +
+                      int.parse(dataTarif[0]['tarif_admin'])) +
+                  int.parse(dataTarif[0]['tarif_materai']))
               .toStringAsFixed(0)
               .replaceAll(RegExp(r'\B(?=(\d{3})+(?!\d))'), '.');
         }
@@ -51,31 +68,31 @@ class _ChargingInputScreenState extends State<ChargingInputScreen> {
     });
   }
 
-  Future<void> scanQR() async {
-    String barcodeScanRes;
-    // Platform messages may fail, so we use a try/catch PlatformException.
-    try {
-      barcodeScanRes = await FlutterBarcodeScanner.scanBarcode(
-          '#ff6666', 'Cancel', true, ScanMode.QR);
-      print(barcodeScanRes);
-      // ignore: use_build_context_synchronously
-      Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context ) => const ConfirmPage(),
-          ));
-    } on PlatformException {
-      barcodeScanRes = 'Failed to get platform version.';
+  Future<void> _fetchLokasiCharger() async {
+    final api_token = storage.getItem('api_token');
+    final response = await http.get(Uri.parse(
+        'http://spklu.solusi-rnd.tech/api/lokasi-charger?token=$api_token&qrcode=${widget.qrCode}'));
+    if (response.statusCode == 200) {
+      setState(() {
+        lokasiCharger = jsonDecode(response.body);
+      });
+    } else {
+      throw Exception('Failed to load data from API');
     }
+  }
 
-    // If the widget was removed from the tree while the asynchronous platform
-    // message was in flight, we want to discard the reply rather than calling
-    // setState to update our non-existent appearance.
-    if (!mounted) return ;
-
-    setState(() {
-      _scanBarcode = barcodeScanRes;
-    });
+  Future<void> _fetchDataTarif() async {
+    final api_token = storage.getItem('api_token');
+    final response = await http.get(Uri.parse(
+        'http://spklu.solusi-rnd.tech/api/data-tarif?token=$api_token'));
+    if (response.statusCode == 200) {
+      setState(() {
+        dataTarif = jsonDecode(response.body);
+      });
+      print(dataTarif);
+    } else {
+      throw Exception('Failed to load data from API');
+    }
   }
 
   @override
@@ -142,11 +159,27 @@ class _ChargingInputScreenState extends State<ChargingInputScreen> {
                           child: Container(
                             padding:
                                 EdgeInsets.only(left: width * 0.02, top: 5.0),
-                            child: const Text(
-                              'Jl. Cikunir Raya No.689, RT.002/RW.015, Jaka Mulya, Kec. Bekasi Sel., Kota Bks, Jawa Barat 17146',
-                              style: TextStyle(
-                                fontSize: 13,
-                              ),
+                            // ignore: prefer_const_constructors
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (lokasiCharger.isNotEmpty)
+                                  Text(
+                                    '${lokasiCharger[0]['nama_lokasi']}',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                if (lokasiCharger.isNotEmpty)
+                                  Text(
+                                    '${lokasiCharger[0]['alamat_lokasi']}',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
                             ),
                           ),
                         ),
@@ -200,29 +233,28 @@ class _ChargingInputScreenState extends State<ChargingInputScreen> {
                         ),
                         Expanded(
                           child: Container(
-                            alignment: Alignment.topLeft,
-                            padding: const EdgeInsets.only(top: 5.0),
+                            padding:
+                                EdgeInsets.only(left: width * 0.02, top: 5.0),
+                            // ignore: prefer_const_constructors
                             child: Column(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  transform:
-                                      Matrix4.translationValues(-9.0, 0.0, 0.0),
-                                  child: const Text(
-                                    'Delta DC City Charger',
+                                if (lokasiCharger.isNotEmpty)
+                                  Text(
+                                    '${lokasiCharger[0]['nama_charger']}',
                                     style: TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 14,
                                     ),
                                   ),
-                                ),
-                                Container(
-                                  padding: EdgeInsets.only(left: width * 0.02),
-                                  child: const Text(
-                                    'Plug: B.CC52 - 180 kW DC',
+                                if (lokasiCharger.isNotEmpty)
+                                  Text(
+                                    'Plug: ${lokasiCharger[0]['nama_pengisian']} - ${lokasiCharger[0]['max_kwh']} kW',
                                     style: TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 14,
                                     ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
                               ],
                             ),
                           ),
@@ -346,9 +378,7 @@ class _ChargingInputScreenState extends State<ChargingInputScreen> {
                     ),
                     primary: const Color.fromRGBO(0, 125, 251, 1),
                   ),
-                  onPressed: () {
-                    scanQR();
-                  },
+                  onPressed: () {},
                   child: const Text('Next', style: TextStyle(fontSize: 16)),
                 ),
               ),
