@@ -378,7 +378,15 @@ class _ChargingInputScreenState extends State<ChargingInputScreen> {
                     ),
                     primary: const Color.fromRGBO(0, 125, 251, 1),
                   ),
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ConfirmPage(
+                            nominal: nominalKWH.text, qrCode: widget.qrCode),
+                      ),
+                    );
+                  },
                   child: const Text('Next', style: TextStyle(fontSize: 16)),
                 ),
               ),
@@ -395,10 +403,11 @@ class _ChargingInputScreenState extends State<ChargingInputScreen> {
         color: Color.fromRGBO(247, 247, 248, 1),
         onPressed: () {
           Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const NavigationPage(),
-              ));
+            context,
+            MaterialPageRoute(
+              builder: (context) => const NavigationPage(),
+            ),
+          );
         },
       ),
       elevation: 1,
@@ -407,7 +416,7 @@ class _ChargingInputScreenState extends State<ChargingInputScreen> {
       centerTitle: true,
       backgroundColor: bluee,
       title: const Text(
-        "Location",
+        "Charging Input",
         style: TextStyle(color: Color.fromRGBO(247, 247, 248, 1)),
       ),
     );
